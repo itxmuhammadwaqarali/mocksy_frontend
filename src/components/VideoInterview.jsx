@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ChatBubble from './ChatBubble';
+import * as faceapi from '@vladmandic/face-api';
 
 export default function VideoInterview({ cv_id, role, token }) {
   const navigate = useNavigate();
@@ -16,10 +17,58 @@ export default function VideoInterview({ cv_id, role, token }) {
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [subtitle, setSubtitle] = useState('Initializing AI connection...');
   const [evalResult, setEvalResult] = useState(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [detectedEmotion, setDetectedEmotion] = useState(null);
 
   // Web Speech API refs
   const recognitionRef = useRef(null);
   const synthRef = window.speechSynthesis;
+  const detectionIntervalRef = useRef(null);
+
+  // Load face-api models
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        await faceapi.nets.faceExpressionNet.loadFromUri('/models');
+        setModelsLoaded(true);
+      } catch (err) {
+        console.error('Error loading face-api models:', err);
+      }
+    };
+    loadModels();
+  }, []);
+
+  // Run emotion detection loop
+  useEffect(() => {
+    if (!modelsLoaded || !videoRef.current) return;
+
+    const detectEmotions = async () => {
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        try {
+          const detections = await faceapi.detectSingleFace(
+            videoRef.current,
+            new faceapi.TinyFaceDetectorOptions()
+          ).withFaceExpressions();
+
+          if (detections) {
+            const expressions = detections.expressions;
+            const dominantEmotion = Object.keys(expressions).reduce((a, b) => 
+              expressions[a] > expressions[b] ? a : b
+            );
+            setDetectedEmotion(dominantEmotion);
+          } else {
+            setDetectedEmotion(null);
+          }
+        } catch (e) {
+          console.error('Face detection error:', e);
+        }
+      }
+    };
+
+    detectionIntervalRef.current = setInterval(detectEmotions, 1000);
+    return () => clearInterval(detectionIntervalRef.current);
+  }, [modelsLoaded, isConnected]);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -152,6 +201,7 @@ export default function VideoInterview({ cv_id, role, token }) {
       if (ws.readyState === WebSocket.OPEN) ws.close();
       if (synthRef) synthRef.cancel();
       if (recognitionRef.current) recognitionRef.current.stop();
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
     };
   }, [token, cv_id, role, navigate]);
 
@@ -259,7 +309,7 @@ export default function VideoInterview({ cv_id, role, token }) {
           </div>
 
           {/* User Camera Feed */}
-          <div className="user-video-container">
+          <div className="user-video-container" style={{ position: 'relative' }}>
             <video 
               ref={videoRef} 
               autoPlay 
@@ -267,6 +317,20 @@ export default function VideoInterview({ cv_id, role, token }) {
               muted 
               className="video-element"
             />
+            {detectedEmotion && (
+              <div style={{ position: 'absolute', bottom: '20px', left: '20px', backgroundColor: 'rgba(0,0,0,0.6)', padding: '6px 14px', borderRadius: '20px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', fontWeight: 'bold', backdropFilter: 'blur(4px)', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 10 }}>
+                <span style={{ fontSize: '1.2rem' }}>
+                  {detectedEmotion === 'happy' ? '😊'
+                   : detectedEmotion === 'sad' ? '😢'
+                   : detectedEmotion === 'angry' ? '😠'
+                   : detectedEmotion === 'fearful' ? '😨'
+                   : detectedEmotion === 'disgusted' ? '🤢'
+                   : detectedEmotion === 'surprised' ? '😲'
+                   : '😐'}
+                </span>
+                <span style={{ textTransform: 'capitalize', letterSpacing: '0.5px' }}>{detectedEmotion}</span>
+              </div>
+            )}
           </div>
           
         </div>
