@@ -41,3 +41,6 @@ Make sure you have [Node.js](https://nodejs.org/) installed on your machine.
 - **Design System**: Vanilla CSS with glassmorphism styles (`src/index.css`)
 - **Authentication**: JWT tokens stored in `localStorage` managed via `AuthContext.jsx`
 - **Real-Time Features**: WebSockets to connect directly to the FastAPI server for the live interview loop.
+
+
+## Backend REPO Link: https://github.com/itxmuhammadwaqarali/Mocksy
